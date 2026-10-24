@@ -1,0 +1,35 @@
+name: 编译未签名 IPA
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        run: xcodegen generate
+
+      - name: 编译
+        run: |
+          xcodebuild -project HDFCam.xcodeproj -target HDFCam -configuration Release \
+            -sdk iphoneos SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: 打包 IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Release-iphoneos/HDFCam.app Payload/
+          zip -qry HDFCam.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HDFCam-ipa
+          path: HDFCam.ipa
