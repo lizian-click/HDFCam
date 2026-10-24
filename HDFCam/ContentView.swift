@@ -27,6 +27,20 @@ struct ContentView: View {
                         Text("请在 设置 → 柔光机 中允许使用相机")
                             .foregroundStyle(.white).padding()
                     }
+                    if camera.useRAW {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Text("RAW").font(.caption2.weight(.bold))
+                                    .padding(.horizontal, 6).padding(.vertical, 3)
+                                    .background(Color.orange, in: RoundedRectangle(cornerRadius: 4))
+                                    .foregroundStyle(.black)
+                                    .padding(10)
+                            }
+                            Spacer()
+                        }
+                        .allowsHitTesting(false)
+                    }
                 }
                 zoomBar
                 controlBar
@@ -139,54 +153,68 @@ struct ParamPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     section("曝光")
-                    row("曝光补偿 EV", $camera.ev, -2...2, "%.1f")
+                    row("曝光补偿 EV", $camera.ev, -2...2) { String(format: "%.1f", $0) }
+                    row("数字曝光", $camera.look.exposure, -1.5...1.5) { String(format: "%.1f 档", $0) }
+                    row("点光源能量", $camera.look.pointBoost, 0...1.5) { String(format: "×%.2f", $0) }
+                    row("高光肩部", $camera.look.knee, 0.55...0.9) { String(format: "%.2f", $0) }
+                    if camera.rawSupported {
+                        Toggle("RAW 真高光（拍照用 ProRAW，较慢）", isOn: $camera.useRAW).font(.footnote).padding(.top, 4)
+                    }
 
-                    section("HDF 柔光")
-                    row("强度", $camera.fx.bloom, 0...0.2, "%.3f")
-                    row("紧贴高光", $camera.fx.wCore, 0...1, "%.2f")
-                    row("中晕", $camera.fx.wMid, 0...1, "%.2f")
-                    row("长拖尾", $camera.fx.wTail, 0...1, "%.2f")
-                    row("高光扩展（档）", $camera.fx.hlStops, 0...5, "%.1f")
-                    row("高光起点", $camera.fx.hlThreshold, 0.6...0.98, "%.2f")
-                    row("光晕暖边", $camera.fx.warmEdge, 0...1, "%.2f")
+                    section("光学滤镜")
+                    row("理光 HDF", $camera.look.hdf, 0...1.3) { hdfLabel($0) }
+                    row("天芬 黑丝绒", $camera.look.satin, 0...4) { gradeLabel($0) }
+                    row("天芬 珠光", $camera.look.pearl, 0...4) { gradeLabel($0) }
+                    row("天芬 微光", $camera.look.glimmer, 0...4) { gradeLabel($0) }
+                    row("黑柔（对照）", $camera.look.bpm, 0...4) { gradeLabel($0) }
 
-                    section("胶片红晕")
-                    row("强度", $camera.fx.halation, 0...0.3, "%.3f")
-                    row("阈值", $camera.fx.halThreshold, 0.4...1.2, "%.2f")
-                    row("核心抑制", $camera.fx.halCore, 0...1, "%.2f")
-
-                    section("人像")
-                    row("柔肤", $camera.fx.softSkin, 0...1, "%.2f")
-
-                    section("影调")
-                    row("高光压缩", $camera.fx.shoulder, 0...1, "%.2f")
-                    row("色温", $camera.fx.warmth, -1...1, "%.2f")
-                    row("饱和度", $camera.fx.saturation, 0...1.5, "%.2f")
-
-                    section("颗粒")
-                    row("强度", $camera.fx.grain, 0...1, "%.2f")
-                    row("尺寸", $camera.fx.grainSize, 0.6...3, "%.1f")
-                    row("暗部偏重", $camera.fx.grainShadow, 0...1, "%.2f")
+                    section("胶片")
+                    HStack {
+                        Text("片种").font(.footnote)
+                        Spacer()
+                        Picker("片种", selection: $camera.look.stock) {
+                            ForEach(FilmStock.allCases) { s in Text(s.name).tag(s) }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    row("颗粒强度", $camera.look.grain, 0...2) { String(format: "×%.2f", $0) }
+                    row("胶片影调", $camera.look.tone, 0...1) { String(format: "%.2f", $0) }
+                    row("人像色彩", $camera.look.hsl, 0...1) { String(format: "%.2f", $0) }
+                    row("冷暖", $camera.look.warm, -1...1) { String(format: "%+.2f", $0) }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 40)
             }
         }
-        .frame(maxHeight: UIScreen.main.bounds.height * 0.5)
+        .frame(maxHeight: UIScreen.main.bounds.height * 0.55)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func hdfLabel(_ v: Float) -> String {
+        if v < 0.02 { return "关" }
+        let stops: [(Float, String)] = [(1.0, "≈f/2.8"), (0.75, "≈f/4"), (0.55, "≈f/5.6"), (0.4, "≈f/8")]
+        let nearest = stops.min { abs($0.0 - v) < abs($1.0 - v) }!
+        return String(format: "%.2f %@", v, nearest.1)
+    }
+
+    private func gradeLabel(_ g: Float) -> String {
+        if g < 0.05 { return "关" }
+        let names = ["1/8", "1/4", "1/2", "1"]
+        let i = min(max(Int(g.rounded()) - 1, 0), 3)
+        return String(format: "%.1f · %@", g, names[i])
     }
 
     private func section(_ t: String) -> some View {
         Text(t).font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 12)
     }
 
-    private func row(_ title: String, _ value: Binding<Float>, _ range: ClosedRange<Float>, _ fmt: String) -> some View {
+    private func row(_ title: String, _ value: Binding<Float>, _ range: ClosedRange<Float>, _ fmt: @escaping (Float) -> String) -> some View {
         VStack(spacing: 2) {
             HStack {
                 Text(title).font(.footnote)
                 Spacer()
-                Text(String(format: fmt, value.wrappedValue)).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                Text(fmt(value.wrappedValue)).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
             }
             Slider(value: value, in: range)
         }
